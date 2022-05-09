@@ -1,7 +1,7 @@
 # Exercise Companion Workshop
 
 ## Before you begin
-In this workshop, you'll learn how to create an app that uses will analyze an image stream from the camera in order to guide the user through an exercise.
+In this workshop, you'll learn how to create an app that will analyze an image stream from the camera in order to guide the user through an exercise.
 
 ### Prerequisites
 Basic Android development experience.
