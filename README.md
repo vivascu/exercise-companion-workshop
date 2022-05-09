@@ -18,3 +18,7 @@ Basic Android development experience.
 - Note that CameraX only requires a minimum supported API level to be 21.
 - Android Studio Arctic Fox 2020.3.1 or above.
 - Understanding of Kotlin.
+
+## Getting Started
+
+[Step 1: Create the project](../../tree/step_01)
