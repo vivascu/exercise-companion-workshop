@@ -1,20 +1,11 @@
-# Excercise Companion Workshop
+# Exercise Companion Workshop
 
-## Before you begin
-In this workshop, you'll learn how to create an app that uses will analyze an image stream from the camera in order to guide the user through an excercise.
+## Step 1: Create the Project
 
-### Prerequisites
-Basic Android development experience.
+1. In Android Studio, create a new project, and select Empty Compose Activity when prompted.
+2. Update Dependencies.
+3. Build the project (make sure you use Java 11).
 
-### What you'll do
-- Create UI with Jetpack Compose.
-- Learn to work with CameraX.
-- Create usecases to analyse the input stream.
-- Learn how to interpret data from a pose detection algorythm.
-- Use angle heuristics to validate a pose.
+## Next Step: Request the permissions
 
-### What you'll need
-- An Android device (strongly recommended) or Android Studio's emulator.
-- Note that CameraX only requires a minimum supported API level to be 21.
-- Android Studio Arctic Fox 2020.3.1 or above.
-- Understand of Kotlin.
+[Step 2: Request the permissions](../../tree/step_02)
