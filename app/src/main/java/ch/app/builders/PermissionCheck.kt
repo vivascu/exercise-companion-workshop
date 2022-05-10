@@ -1,30 +1,27 @@
-# Exercise Companion Workshop
+package ch.app.builders
 
-## Step 2: Request the necessary permissions
+import android.Manifest
+import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.foundation.layout.padding
+import androidx.compose.material.Button
+import androidx.compose.material.Text
+import androidx.compose.runtime.Composable
+import androidx.compose.ui.Alignment
+import androidx.compose.ui.Modifier
+import androidx.compose.ui.unit.dp
+import com.google.accompanist.permissions.ExperimentalPermissionsApi
+import com.google.accompanist.permissions.PermissionStatus
+import com.google.accompanist.permissions.rememberPermissionState
 
-Before the app opens the camera, it needs permission from the user to do so; In this step, we'll
-implement those necessary permissions.
-
-1. Open `AndroidManifest.xml` and add these lines before the `application` tag.
-```xml
-    <uses-feature android:name="android.hardware.camera" />
-    <uses-permission android:name="android.permission.CAMERA" />
-```
-2. We are using compose therefore can use the [Accompanist Permission Library](https://google.github.io/accompanist/permissions/). Add the dependency to `build.gradle`
-
-```
-implementation 'com.google.accompanist:accompanist-permissions:0.24.7-alpha'
-```
-
-
-3. Create a composable function `PermissionCheck` that will handle the permission check.
-
-```kotlin
+@ExperimentalPermissionsApi
 @Composable
 fun PermissionCheck(
     content: @Composable () -> Unit = { }
 ) {
-// Camera permission state
+
+    // Camera permission state
     val cameraPermissionState = rememberPermissionState(
         Manifest.permission.CAMERA
     )
@@ -35,7 +32,11 @@ fun PermissionCheck(
             content()
         }
         is PermissionStatus.Denied -> {
-            Column {
+            Column(
+                modifier = Modifier.fillMaxSize(),
+                verticalArrangement = Arrangement.Center,
+                horizontalAlignment = Alignment.CenterHorizontally
+            ) {
                 val textToShow = if (status.shouldShowRationale) {
                     // If the user has denied the permission but the rationale can be shown,
                     // then gently explain why the app requires this permission
@@ -47,7 +48,10 @@ fun PermissionCheck(
                     "Camera permission required for this feature to be available. " +
                             "Please grant the permission."
                 }
-                Text(textToShow)
+                Text(
+                    modifier = Modifier.padding(16.dp),
+                    text = textToShow
+                )
                 Button(onClick = { cameraPermissionState.launchPermissionRequest() }) {
                     Text("Request permission")
                 }
@@ -55,22 +59,3 @@ fun PermissionCheck(
         }
     }
 }
-```
-
-4. Use the new function in the `MainActivity`.
-
-```kotlin
-@OptIn(ExperimentalPermissionsApi::class)
-@Composable
-fun Exercise() {
-    PermissionCheck {
-        Box {
-            Text(text = "Hello AppBuilders!")
-        }
-    }
-}
-```
-
-## Next Step: Add CameraX
-
-[Step 3: Add CameraX](../../tree/step_03)
