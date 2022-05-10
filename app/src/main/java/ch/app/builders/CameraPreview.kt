@@ -3,6 +3,7 @@ package ch.app.builders
 import android.util.Log
 import android.view.ViewGroup
 import androidx.camera.core.CameraSelector
+import androidx.camera.core.ImageAnalysis
 import androidx.camera.core.Preview
 import androidx.camera.view.PreviewView
 import androidx.compose.runtime.Composable
@@ -10,7 +11,14 @@ import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalLifecycleOwner
 import androidx.compose.ui.viewinterop.AndroidView
+import ch.app.builders.detection.ImageProcessor
+import ch.app.builders.model.BodyPoseState
+import kotlinx.coroutines.cancel
+import kotlinx.coroutines.channels.awaitClose
+import kotlinx.coroutines.flow.Flow
+import kotlinx.coroutines.flow.callbackFlow
 import kotlinx.coroutines.launch
+import java.util.concurrent.Executor
 
 @Composable
 fun CameraPreview(
@@ -37,6 +45,10 @@ fun CameraPreview(
                 .build()
                 .also { it.setSurfaceProvider(previewView.surfaceProvider) }
 
+            // CameraX Analysis UseCase
+            val analysisUseCase = ImageAnalysis.Builder()
+                .build()
+
 
             coroutineScope.launch {
                 val cameraProvider = context.getCameraProvider()
@@ -47,6 +59,7 @@ fun CameraPreview(
                         lifecycleOwner,
                         cameraSelector,
                         previewUseCase,
+                        analysisUseCase,
                     )
                 } catch (ex: Exception) {
                     Log.e("CameraPreview", "Use case binding failed", ex)
@@ -56,4 +69,27 @@ fun CameraPreview(
             previewView
         }
     )
+}
+
+private fun ImageAnalysis.detectPose(
+    executor: Executor,
+): Flow<BodyPoseState> = callbackFlow {
+    analyze(executor) { result ->
+        with(result) {
+            onSuccess { trySend(it) }
+            onFailure { cancel("Image Process Failure", it) }
+        }
+    }
+
+    awaitClose {}
+}
+
+private fun ImageAnalysis.analyze(
+    executor: Executor,
+    callback: (Result<BodyPoseState>) -> Unit,
+) {
+    val imageProcessor = ImageProcessor(callback)
+    setAnalyzer(executor) { imageProxy ->
+        imageProcessor.analyze(imageProxy)
+    }
 }
