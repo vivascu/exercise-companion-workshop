@@ -1,72 +1,64 @@
 # Exercise Companion Workshop
 
-## Step 5: Add the Analysis use case
+## Step 6: Add pose detection
 
-A great way to make our camera app more interesting is using the `ImageAnalysis` feature. It allows
-us to define a custom class that implements the `ImageAnalysis.Analyzer` interface, and which will
-be called with incoming camera frames.
+For pose detection we a going to use the [Pose detection library from ML Kit](https://developers.google.com/ml-kit/vision/pose-detection/android).
 
-1. Create a class that implements the `ImageAnalysis.Analyzer` interface.
+ML Kit Pose Detection produces a full-body 33 point skeletal match that includes facial landmarks (
+ears, eyes, mouth, and nose) and points on the hands and feet. We will use these landmarks to
+determine if the exercises are performed correctly.
 
-2. Create the Analysis use case.
-
-```
-// CameraX Analysis UseCase
-val analysisUseCase = ImageAnalysis.Builder().build()
-```
-
-3. Bind the use case to the lifecycle of the composable method.
+1. Add the dependency for ML Kit.
 
 ```
-cameraProvider.bindToLifecycle(
-    lifecycleOwner,
-    cameraSelector,
-    previewUseCase,
-    analysisUseCase,
-)
+implementation 'com.google.mlkit:pose-detection:18.0.0-beta2'
 ```
 
-4. In order to follow the results of the analysis we want to connect the `Analyser` from the first 
-   step to the use case. The binding requires an `Executor` on which to run the analysis. 
+2. Get a pose detection client in the image analyzer.
 
 ```
-fun ImageAnalysis.analyze(
-    executor: Executor,
-) {
-    val imageProcessor = ImageProcessor()
-    setAnalyzer(executor) { imageProxy ->
-        imageProcessor.analyze(imageProxy)
+private val detector by lazy {
+    PoseDetection.getClient(
+        PoseDetectorOptions.Builder()
+            .setDetectorMode(PoseDetectorOptions.STREAM_MODE)
+            .build()
+        )
     }
-}
 ```
 
-5. We can make it observe the updates by wrapping the result of the analysis in a `Flow`. The 
-   emitted states we will define as `BodyPoseStates` with a default `Idle` value. These states 
-   will come from our `Analyzer` via a callback.
+3. Convert the `ImageProxy` to an `MLImage`.
 
 ```
-class ImageProcessor(
-    private val callback: (Result<BodyPoseState>) -> Unit,
-) : ImageAnalysis.Analyzer
+val ImageProxy.mlImage
+    @ExperimentalGetImage
+    get() = MediaMlImageBuilder(image!!)
+        .setRotation(imageInfo.rotationDegrees)
+        .build()
 ```
 
-6. Create a function that will provide the actual `Flow` and handle the `Result<BodyPoseState>`.
+4. Process the ML task in the `analyze` method.
 
 ```
-private fun ImageAnalysis.detectPose(
-    executor: Executor,
-): Flow<BodyPoseState> = callbackFlow {
-    analyze(executor) { result ->
-        with(result) {
-            onSuccess { trySend(it) }
-            onFailure { cancel("Image Process Failure", it) }
+@ExperimentalGetImage
+override fun analyze(image: ImageProxy) {
+    val mlImage = image.mlImage
+    detector.process(mlImage)
+        .addOnSuccessListener { pose ->
+            callback.invoke(Result.success(Idle),) // Return while we don't validate the pose.
         }
+        .addOnFailureListener { exception ->
+            callback.invoke(Result.failure(exception))
+        }
+        .addOnCompleteListener { image.close() }
     }
-
-    awaitClose {}
-}
 ```
 
-## Next Step: Add the pose detection
+5. Collect the flow in the camera view so we bring in the pose detection.
 
-[Step 6: Add the pose detection](../../tree/step_06)
+```
+analysisUseCase.detectPose(LocalContext.current.executor).collectAsState(initial = Idle)
+```
+
+## Next Step: Add constraints
+
+[Step 7: Add constraints](../../tree/step_07)

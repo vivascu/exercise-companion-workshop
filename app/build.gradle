@@ -65,6 +65,8 @@ dependencies {
     implementation 'com.google.accompanist:accompanist-permissions:0.24.7-alpha'
     implementation "com.google.accompanist:accompanist-systemuicontroller:0.24.7-alpha"
 
+    implementation 'com.google.mlkit:pose-detection:18.0.0-beta2'
+
     testImplementation 'junit:junit:4.13.2'
 
     androidTestImplementation 'androidx.test.ext:junit:1.1.3'
