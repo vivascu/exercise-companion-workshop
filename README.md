@@ -1,108 +1,72 @@
 # Exercise Companion Workshop
 
-## Step 4: Add the Preview use case
+## Step 5: Add the Analysis use case
 
-1. Create a compose function to wrap the CameraX `Preview` class and give it the `PreviewView.ScaleType.FILL_CENTER` scale type.
-```
-    val previewView = PreviewView(context).apply {
-        this.scaleType = scaleType
-        layoutParams = ViewGroup.LayoutParams(
-            ViewGroup.LayoutParams.MATCH_PARENT,
-            ViewGroup.LayoutParams.MATCH_PARENT
-        )
-    }
-```
+A great way to make our camera app more interesting is using the `ImageAnalysis` feature. It allows
+us to define a custom class that implements the `ImageAnalysis.Analyzer` interface, and which will
+be called with incoming camera frames.
 
-2. Create a `Preview` use case and give it the `previewView`'s `surfaceProvider`.  
+1. Create a class that implements the `ImageAnalysis.Analyzer` interface.
+
+2. Create the Analysis use case.
 
 ```
-    val previewUseCase = Preview.Builder()
-        .build()
-        .also { it.setSurfaceProvider(previewView.surfaceProvider) }
+// CameraX Analysis UseCase
+val analysisUseCase = ImageAnalysis.Builder().build()
 ```
 
-3. From our `Context` we need to obtain a `ProcessCameraProvider`. This process is asynchronous, 
-   so we can wrap it in a `suspend` function.
-```
-suspend fun Context.getCameraProvider(): ProcessCameraProvider = suspendCoroutine { continuation ->
-    ProcessCameraProvider.getInstance(this).also { future ->
-        future.addListener({
-            continuation.resume(future.get())
-        }, executor)
-    }
-}
-```
-
-For the executor we can just provide the main executor.
+3. Bind the use case to the lifecycle of the composable method.
 
 ```
-val Context.executor: Executor
-    get() = ContextCompat.getMainExecutor(this)
+cameraProvider.bindToLifecycle(
+    lifecycleOwner,
+    cameraSelector,
+    previewUseCase,
+    analysisUseCase,
+)
 ```
 
-4. When we create the `PreviewView` we need to bind the use case to our `lifecycle`. For that we 
-   will also need a `CameraSelector` to specify which camera to use.
+4. In order to follow the results of the analysis we want to connect the `Analyser` from the first 
+   step to the use case. The binding requires an `Executor` on which to run the analysis. 
 
 ```
-coroutineScope.launch {
-    val cameraProvider = context.getCameraProvider()
-    try {
-        // Must unbind the use-cases before rebinding them.
-        cameraProvider.unbindAll()
-        cameraProvider.bindToLifecycle(
-            lifecycleOwner,
-            cameraSelector,
-            previewUseCase,
-            )
-        } catch (ex: Exception) {
-            Log.e("CameraPreview", "Use case binding failed", ex)
-        }
-    }
-```
-
-5. Use the new function to display the camera preview.
-
-```
-@Composable
-fun Exercise() {
-    PermissionCheck {
-        Box {
-            CameraPreview()
-        }
+fun ImageAnalysis.analyze(
+    executor: Executor,
+) {
+    val imageProcessor = ImageProcessor()
+    setAnalyzer(executor) { imageProxy ->
+        imageProcessor.analyze(imageProxy)
     }
 }
 ```
 
-6. Adjust insets for immersive experience.
-Use the `Fullscreen` theme in `themes.xml`.
-```
-<style name="Theme.AppBuildersWorkshop" parent="android:Theme.Material.Light.NoActionBar.Fullscreen">
-```
-
-Add the dependency for the system UI controller accompanist library.
+5. We can make it observe the updates by wrapping the result of the analysis in a `Flow`. The 
+   emitted states we will define as `BodyPoseStates` with a default `Idle` value. These states 
+   will come from our `Analyzer` via a callback.
 
 ```
-implementation "com.google.accompanist:accompanist-systemuicontroller:0.24.7-alpha"
+class ImageProcessor(
+    private val callback: (Result<BodyPoseState>) -> Unit,
+) : ImageAnalysis.Analyzer
 ```
 
-In the activity specify that we will handle the insets. 
+6. Create a function that will provide the actual `Flow` and handle the `Result<BodyPoseState>`.
 
 ```
-WindowCompat.setDecorFitsSystemWindows(window, false)
+private fun ImageAnalysis.detectPose(
+    executor: Executor,
+): Flow<BodyPoseState> = callbackFlow {
+    analyze(executor) { result ->
+        with(result) {
+            onSuccess { trySend(it) }
+            onFailure { cancel("Image Process Failure", it) }
+        }
+    }
+
+    awaitClose {}
+}
 ```
 
-Use a side effect to adjust all the system bars colors.
+## Next Step: Add the pose detection
 
-```
-val systemUiController = rememberSystemUiController()
-
-SideEffect {
-   systemUiController.setSystemBarsColor(
-      color = Color.Transparent,
-     )
-   }
-```
-
-## Next Step: Add the Analysis use case
-
-[Step 5: Add the Analysis use case](../../tree/step_05)
+[Step 6: Add the pose detection](../../tree/step_06)
