@@ -63,6 +63,7 @@ dependencies {
     implementation "androidx.camera:camera-extensions:${camerax_version}"
 
     implementation 'com.google.accompanist:accompanist-permissions:0.24.7-alpha'
+    implementation "com.google.accompanist:accompanist-systemuicontroller:0.24.7-alpha"
 
     testImplementation 'junit:junit:4.13.2'
 
