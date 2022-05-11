@@ -1,325 +1,129 @@
 # Exercise Companion Workshop
 
-## Step 9: Show the Body Pose
+## Step 10: Translate the coordinates
 
-1. A way of thinking of the body is by representing it's skeleton which consists of `Bones`. 
-   Define the bones visible in our guide.
+1. In order to be able to properly translate the coordinates we need to pass the information about
+   the `SourceImage`.
 
 ```kotlin
-data class Bone(
-    val startJoint: LandmarkType,
-    val endJoint: LandmarkType,
+data class SourceImage(
+    val height: Int,
+    val width: Int,
+    val rotation: Int,
+    val isFlipped: Boolean,
 ) {
+    val rotatedHeight
+        get() = if (rotation == 0 || rotation == 180) {
+            height
+        } else width
 
-    companion object {
-
-        val LEFT_FOREARM = Bone(
-            LEFT_WRIST,
-            LEFT_ELBOW
-        )
-
-        val LEFT_UPPER_ARM = Bone(
-            LEFT_ELBOW,
-            LEFT_SHOULDER
-        )
-
-        val TORSO = Bone(
-            LEFT_SHOULDER,
-            RIGHT_SHOULDER
-        )
-
-        val RIGHT_FOREARM = Bone(
-            RIGHT_WRIST,
-            RIGHT_ELBOW
-        )
-
-        val RIGHT_UPPER_ARM = Bone(
-            RIGHT_ELBOW,
-            RIGHT_SHOULDER
-        )
-
-        val LEFT_SIDE_TORSO = Bone(
-            LEFT_SHOULDER,
-            LEFT_HIP
-        )
-
-        val RIGHT_SIDE_TORSO = Bone(
-            RIGHT_SHOULDER,
-            RIGHT_HIP
-        )
-
-        val WAIST = Bone(
-            RIGHT_HIP,
-            LEFT_HIP
-        )
-
-        val LEFT_THIGH = Bone(
-            LEFT_HIP,
-            LEFT_KNEE
-        )
-
-        val RIGHT_THIGH = Bone(
-            RIGHT_HIP,
-            RIGHT_KNEE
-        )
-
-        val LEFT_SHIN = Bone(
-            LEFT_KNEE,
-            LEFT_ANKLE
-        )
-
-        val RIGHT_SHIN = Bone(
-            RIGHT_KNEE,
-            RIGHT_ANKLE
-        )
-
-        /**
-         * An order list representing the [Bone]s through which we have to draw a line to represent
-         * a body skeleton.
-         */
-        val ALL = setOf(
-            LEFT_FOREARM,
-            LEFT_UPPER_ARM,
-            TORSO,
-            RIGHT_FOREARM,
-            RIGHT_UPPER_ARM,
-            LEFT_SIDE_TORSO,
-            RIGHT_SIDE_TORSO,
-            WAIST,
-            LEFT_THIGH,
-            RIGHT_THIGH,
-            LEFT_SHIN,
-            RIGHT_SHIN
-        )
-
-        fun Collection<Bone>.createSkeleton(): List<Int> =
-            fold(listOf()) { acc, bone ->
-                acc.toMutableList() + bone.startJoint + bone.endJoint
-            }
-    }
+    val rotatedWidth
+        get() = if (rotation == 0 || rotation == 180) {
+            width
+        } else height
 }
 ```
 
-2. We just defined valid bones and we can use the `PoseError`s to specify which bones correspond 
-   to them.
+2. As well we need to represent the `ViewPort` that will be the destination for the skeletal
+   overlay.
+
 ```kotlin
-val PoseError?.bones: List<Bone>
-    get() = when (this) {
-        PoseError.LEFT_KNEE_NOT_90_DEGREES -> listOf(
-            Bone.LEFT_THIGH,
-            Bone.LEFT_SHIN,
-        )
+data class ViewPort(val height: Int, val width: Int)
 
-        PoseError.RIGHT_KNEE_NOT_90_DEGREES -> listOf(
-            Bone.LEFT_THIGH,
-            Bone.RIGHT_SHIN,
-        )
-
-        PoseError.LEFT_HIP_NOT_90_DEGREES -> listOf(
-            Bone.LEFT_SIDE_TORSO,
-            Bone.LEFT_THIGH,
-        )
-        PoseError.RIGHT_HIP_NOT_90_DEGREES -> listOf(
-            Bone.RIGHT_SIDE_TORSO,
-            Bone.RIGHT_THIGH
-        )
-        else -> emptyList()
-    }
+val ViewPort.aspectRatio: Float get() = width.toFloat() / height.toFloat()
 ```
 
-3. For the joints we will use a 3D point to represent them.
+3. Define a `CameraMode` to be able to keep determine if the source image is flipped.
 
 ```kotlin
-data class Point(
-    val x: Float,
-    val y: Float,
-    val z: Float,
-) : Serializable {
-    constructor(x: Number, y: Number, z: Number) : this(x.toFloat(), y.toFloat(), z.toFloat())
+enum class CameraMode {
+    Front, Side
 }
 ```
 
-4. To draw the skeleton we will need some paint and information about the screen's density.
+4. Extract the `SourceImage` info out of the ML Image.
 
 ```kotlin
-data class DrawingContext(
-    val paint: Paint,
-    val errorPaint: Paint,
-    val screenDensity: Float,
+private fun MlImage.asSource(cameraMode: CameraMode): SourceImage = SourceImage(
+    width = width,
+    height = height,
+    rotation = rotation,
+    isFlipped = cameraMode == CameraMode.Front
 )
 ```
 
-5. Define the Skeleton as a group of valid and invalid joints and bones.
+5. Pass the `SourceImage` from the image `Analazyer` to the `ValidatedState`s.
 
 ```kotlin
-class Skeleton(
-    val validBones: FloatArray,
-    val validJoints: Set<Point>,
-    val invalidBones: FloatArray = FloatArray(0),
-    val invalidJoints: Set<Point> = emptySet(),
+Result.success(
+    pose.validate(mlImage.asSource(cameraMode)),
 )
 ```
 
-6. Add a draw function for the skeleton on a given `Canvas` given a `DrawingContext`.
+```kotlin
+sealed interface ValidatedPose : BodyPoseState {
+    val pose: Pose
+    val sourceImage: SourceImage
+}
+
+data class ValidBodyPose(
+    override val pose: Pose,
+    override val sourceImage: SourceImage,
+) : ValidatedPose
+
+data class InvalidBodyPose(
+    override val pose: Pose,
+    override val sourceImage: SourceImage,
+    val error: PoseError,
+) : ValidatedPose
+```
+
+6. Translate the coordinates for each `Landmark`.
 
 ```kotlin
-    fun draw(canvas: Canvas, context: DrawingContext) {
-        val jointRadius = DOT_RADIUS * context.screenDensity
-
-        canvas.drawLines(validBones, context.paint)
-
-        invalidBones.takeIf { it.isNotEmpty() }
-            ?.let { bones ->
-                canvas.drawLines(bones, context.errorPaint)
-            }
-
-        validJoints.forEach { point ->
-            point.draw(canvas, jointRadius, context.paint)
-        }
-
-        invalidJoints.forEach { point ->
-            point.draw(canvas, jointRadius, context.errorPaint)
-        }
-
+fun Pose.translateCoordinates(sourceImage: SourceImage, viewPort: ViewPort): Map<Int, Point> =
+    allPoseLandmarks.associate { landmark ->
+        landmark.translate(sourceImage, viewPort)
     }
-```
 
-6. Create the `Skeleton` out of a list of `Landmark`s.
-```kotlin
-private typealias BodyPose = Map<LandmarkType, Point>
+fun PoseLandmark.translate(sourceImage: SourceImage, viewPort: ViewPort): Pair<Int, Point> {
 
-internal fun BodyPose.createSkeleton(
-    error: PoseError? = null,
-): Skeleton {
-    val errorBones = error.bones
-    val bones = Bone.ALL.toMutableList() - errorBones
-    return Skeleton(
-        validBones = coordinatesForBones(bones),
-        validJoints = jointsForBones(bones),
-        invalidBones = coordinatesForBones(errorBones),
-        invalidJoints = jointsForBones(errorBones),
-    )
-}
+    val viewAspectRatio = viewPort.aspectRatio
+    val imageAspectRatio = sourceImage.rotatedWidth.toFloat() / sourceImage.rotatedHeight.toFloat()
 
+    var postScaleWidthOffset = 0f
+    var postScaleHeightOffset = 0f
+    val scaleFactor: Float
 
-fun BodyPose.coordinatesForBones(bones: Collection<Bone>): FloatArray =
-    bones.createSkeleton()
-        .fold(listOf<Float>()) { acc, landmark ->
-            acc.toMutableList() + getCoordinates(landmark)
-        }.toFloatArray()
+    val viewWidth = viewPort.width.toFloat()
+    val viewHeight = viewPort.height.toFloat()
+    if (viewAspectRatio > imageAspectRatio) {
+        scaleFactor = viewWidth / sourceImage.rotatedWidth.toFloat()
+        postScaleHeightOffset =
+            (viewWidth / imageAspectRatio - viewHeight) / 2
+    } else {
+        scaleFactor = viewHeight / sourceImage.rotatedHeight.toFloat()
+        postScaleWidthOffset = (viewHeight * imageAspectRatio - viewWidth) / 2
+    }
 
-fun BodyPose.getCoordinates(type: LandmarkType): List<Float> = get(type)
-    ?.let { landmark ->
-        listOf(
-            landmark.x,
-            landmark.y
-        )
-    } ?: emptyList()
+    val x = if (sourceImage.isFlipped) {
+        viewWidth - (position3D.x * scaleFactor - postScaleWidthOffset)
+    } else position3D.x * scaleFactor - postScaleWidthOffset
 
-fun BodyPose.jointsForBones(bones: Collection<Bone>): Set<Point> =
-    bones.createSkeleton()
-        .fold(setOf()) { acc, landmark ->
-            get(landmark)?.let { point ->
-                acc.toMutableSet() + point
-            } ?: acc
-        }
-```
+    val y = position3D.y * scaleFactor - postScaleHeightOffset
 
-8. The Skeleton will be drawn on a custom Android view that we will use as an overlay. Create 
-   the custom android view that will draw a `Skeleton` for a `BodyPoseState`.
-
-```kotlin
-class GraphicOverlay @JvmOverloads constructor(
-   context: Context,
-   attrs: AttributeSet? = null,
-   defStyleAttr: Int = 0
-) : View(context, attrs, defStyleAttr) {
-
-   private val lock: Any = Any()
-
-   private val screenDensity = resources.displayMetrics.density
-
-   private val normalPaint by lazy {
-      Paint().apply {
-         strokeWidth = STROKE_WIDTH * screenDensity
-         color = ContextCompat.getColor(context, R.color.green)
-      }
-   }
-
-   private val errorPaint by lazy {
-      Paint().apply {
-         strokeWidth = STROKE_WIDTH * screenDensity
-         color = ContextCompat.getColor(context, R.color.red)
-      }
-   }
-
-
-   private val drawingContext =
-      DrawingContext(normalPaint, errorPaint, screenDensity)
-
-   private var skeleton: Skeleton? = null
-
-   fun setBodyState(state: BodyPoseState) {
-      if (state is ValidatedPose) {
-         val bodyPose = state.pose
-         val landmarks = getLandmarkPoints(bodyPose)
-         with(landmarks) {
-            synchronized(lock) {
-               skeleton = when (state) {
-                  is ValidBodyPose -> createSkeleton()
-                  is InvalidBodyPose -> createSkeleton(state.error)
-               }
-            }
-         }
-      }
-      postInvalidate()
-   }
-
-   private fun getLandmarkPoints(bodyPose: Pose) =
-      bodyPose.allPoseLandmarks
-         .associateBy { it.landmarkType }
-         .mapValues { (_, landmark) ->
-            with(landmark.position3D) {
-               Point(
-                  x = x,
-                  y = y,
-                  z = z,
-               )
-            }
-         }
-
-   override fun onDraw(canvas: Canvas) {
-      super.onDraw(canvas)
-      synchronized(lock) {
-         skeleton?.draw(canvas, drawingContext)
-      }
-   }
-
-   companion object {
-      private const val STROKE_WIDTH = 5f
-   }
+    return landmarkType to Point(x = x, y = y, z = position3D.z)
 }
 ```
 
-9. Use the `GraphicOverlay` in our composable function.
+7. Use the translated landmarks to draw the `Skeleton`.
+
 ```kotlin
-    AndroidView(
-        modifier = modifier,
-        factory = { context ->
-            GraphicOverlay(context).apply {
-                layoutParams = ViewGroup.LayoutParams(
-                    ViewGroup.LayoutParams.MATCH_PARENT,
-                    ViewGroup.LayoutParams.MATCH_PARENT
-                )
-            }
-        },
-        update = {
-            it.setBodyState(state.value)
-        }
-    )
+fun setBodyState(state: BodyPoseState) {
+    val landmarks = bodyPose.translateCoordinates(state.sourceImage, ViewPort(height, width))
+}
 ```
 
+## Next Step: Count the exercise
 
-## Next Step: Translate coordinates
-
-[Step 10: Translate coordinates](../../tree/step_10)
+[Step 11: Count the exercise](../../tree/step_11)

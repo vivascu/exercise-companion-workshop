@@ -10,9 +10,13 @@ import ch.app.builders.R
 import ch.app.builders.model.BodyPoseState
 import ch.app.builders.model.InvalidBodyPose
 import ch.app.builders.model.Point
+import ch.app.builders.model.SourceImage
 import ch.app.builders.model.ValidBodyPose
 import ch.app.builders.model.ValidatedPose
+import ch.app.builders.model.ViewPort
+import ch.app.builders.model.aspectRatio
 import com.google.mlkit.vision.pose.Pose
+import com.google.mlkit.vision.pose.PoseLandmark
 
 class GraphicOverlay @JvmOverloads constructor(
     context: Context,
@@ -47,7 +51,7 @@ class GraphicOverlay @JvmOverloads constructor(
     fun setBodyState(state: BodyPoseState) {
         if (state is ValidatedPose) {
             val bodyPose = state.pose
-            val landmarks = getLandmarkPoints(bodyPose)
+            val landmarks = bodyPose.translateCoordinates(state.sourceImage, ViewPort(height, width))
             with(landmarks) {
                 synchronized(lock) {
                     skeleton = when (state) {
@@ -60,19 +64,6 @@ class GraphicOverlay @JvmOverloads constructor(
         postInvalidate()
     }
 
-    private fun getLandmarkPoints(bodyPose: Pose) =
-        bodyPose.allPoseLandmarks
-            .associateBy { it.landmarkType }
-            .mapValues { (_, landmark) ->
-                with(landmark.position3D) {
-                    Point(
-                        x = x,
-                        y = y,
-                        z = z,
-                    )
-                }
-            }
-
     override fun onDraw(canvas: Canvas) {
         super.onDraw(canvas)
         synchronized(lock) {
@@ -83,4 +74,39 @@ class GraphicOverlay @JvmOverloads constructor(
     companion object {
         private const val STROKE_WIDTH = 5f
     }
+}
+
+fun Pose.translateCoordinates(sourceImage: SourceImage, viewPort: ViewPort): Map<Int, Point> =
+    allPoseLandmarks.associate { landmark ->
+        landmark.translate(sourceImage, viewPort)
+    }
+
+
+fun PoseLandmark.translate(sourceImage: SourceImage, viewPort: ViewPort): Pair<Int, Point> {
+
+    val viewAspectRatio = viewPort.aspectRatio
+    val imageAspectRatio = sourceImage.rotatedWidth.toFloat() / sourceImage.rotatedHeight.toFloat()
+
+    var postScaleWidthOffset = 0f
+    var postScaleHeightOffset = 0f
+    val scaleFactor: Float
+
+    val viewWidth = viewPort.width.toFloat()
+    val viewHeight = viewPort.height.toFloat()
+    if (viewAspectRatio > imageAspectRatio) {
+        scaleFactor = viewWidth / sourceImage.rotatedWidth.toFloat()
+        postScaleHeightOffset =
+            (viewWidth / imageAspectRatio - viewHeight) / 2
+    } else {
+        scaleFactor = viewHeight / sourceImage.rotatedHeight.toFloat()
+        postScaleWidthOffset = (viewHeight * imageAspectRatio - viewWidth) / 2
+    }
+
+    val x = if (sourceImage.isFlipped) {
+        viewWidth - (position3D.x * scaleFactor - postScaleWidthOffset)
+    } else position3D.x * scaleFactor - postScaleWidthOffset
+
+    val y = position3D.y * scaleFactor - postScaleHeightOffset
+
+    return landmarkType to Point(x = x, y = y, z = position3D.z)
 }

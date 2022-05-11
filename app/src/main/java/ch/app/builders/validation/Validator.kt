@@ -2,19 +2,20 @@ package ch.app.builders.validation
 
 import ch.app.builders.model.InvalidBodyPose
 import ch.app.builders.model.PoseError
+import ch.app.builders.model.SourceImage
 import ch.app.builders.model.ValidBodyPose
 import ch.app.builders.model.ValidatedPose
 import com.google.mlkit.vision.pose.Pose
 import com.google.mlkit.vision.pose.PoseLandmark
 
-fun Pose.validate(): ValidatedPose = PoseError.values()
+fun Pose.validate(sourceImage: SourceImage): ValidatedPose = PoseError.values()
     .map { error ->
         val isValid = constraints[error]?.validate(this) ?: false
         error.takeIf { !isValid }
     }.firstOrNull { it != null }
     ?.let { error ->
-        InvalidBodyPose(this, error)
-    } ?: ValidBodyPose(this)
+        InvalidBodyPose(this, sourceImage, error)
+    } ?: ValidBodyPose(this, sourceImage)
 
 private val constraints = mapOf(
     PoseError.LEFT_KNEE_NOT_90_DEGREES to AngleConstraint(
