@@ -17,6 +17,7 @@ import androidx.compose.ui.viewinterop.AndroidView
 import ch.app.builders.detection.ImageProcessor
 import ch.app.builders.model.BodyPoseState
 import ch.app.builders.model.Idle
+import ch.app.builders.ui.GraphicOverlay
 import kotlinx.coroutines.cancel
 import kotlinx.coroutines.channels.awaitClose
 import kotlinx.coroutines.flow.Flow
@@ -77,6 +78,21 @@ fun CameraPreview(
 
     val state = analysisUseCase.detectPose(LocalContext.current.executor)
         .collectAsState(initial = Idle)
+
+    AndroidView(
+        modifier = modifier,
+        factory = { context ->
+            GraphicOverlay(context).apply {
+                layoutParams = ViewGroup.LayoutParams(
+                    ViewGroup.LayoutParams.MATCH_PARENT,
+                    ViewGroup.LayoutParams.MATCH_PARENT
+                )
+            }
+        },
+        update = {
+            it.setBodyState(state.value)
+        }
+    )
 }
 
 private fun ImageAnalysis.detectPose(
