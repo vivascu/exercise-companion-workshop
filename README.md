@@ -1,64 +1,133 @@
 # Exercise Companion Workshop
 
-## Step 6: Add pose detection
+## Step 7: Add constraints
 
-For pose detection we a going to use the [Pose detection library from ML Kit](https://developers.google.com/ml-kit/vision/pose-detection/android).
+We can identify a valid pose by computing the angles of various joints.
 
-ML Kit Pose Detection produces a full-body 33 point skeletal match that includes facial landmarks (
-ears, eyes, mouth, and nose) and points on the hands and feet. We will use these landmarks to
-determine if the exercises are performed correctly.
+Our simple pose can be described as the following combination of approximate body part angles:
 
-1. Add the dependency for ML Kit.
+- 90 degree angle at both knees
+- 90 degree angle at the front of the legs and waist
+
+We use the pose landmarks to compute these angles.
+
+1. Add the `Constraint` interface that can validate a `Pose`.
+
+```kotlin
+interface Constraint {
+    fun validate(pose: Pose): Boolean
+}
+```
+
+2. Create a `Constraint` that will validate an angle. For that we will have to specify three point
+   in the `Pose` with the use of the `LandmarkType`.
+
+Since the `LandmarkType` is an `Int` in the ML Kit we can define a typealias for readability.
+
+```kotlin
+typealias LandmarkType = Int
+```
+
+```kotlin
+data class Landmarks(
+    val a: LandmarkType,
+    val b: LandmarkType,
+    val c: LandmarkType,
+) 
+```
+
+And the `AngleConstraint` should specify the threshold for the valid angle.
+
+```kotlin
+internal class AngleConstraint(
+    private val landmarks: Landmarks,
+    private val minDegree: Float? = null,
+    private val maxDegree: Float? = null,
+) : Constraint {
+
+    override fun validate(pose: Pose): Boolean {
+        ...
+    }   
+```
+
+3. In order to compute the angles we will use some math and for that we need the `kotlin-math`
+   dependency.
 
 ```
-implementation 'com.google.mlkit:pose-detection:18.0.0-beta2'
+implementation 'dev.romainguy:kotlin-math:1.3.0'
 ```
 
-2. Get a pose detection client in the image analyzer.
+4. Determine the vector out of the position of a specified `LandmarkType` for a given `Pose`.
 
+```kotlin
+fun Pose.position(type: LandmarkType): Float2? =
+    allPoseLandmarks.firstOrNull { it.landmarkType == type }?.position?.asVector
+
+val PointF.asVector get() = Float2(x, y)
 ```
-private val detector by lazy {
-    PoseDetection.getClient(
-        PoseDetectorOptions.Builder()
-            .setDetectorMode(PoseDetectorOptions.STREAM_MODE)
-            .build()
+
+5. Create a function to determine the angle between two vectors.
+
+```kotlin
+infix fun Float2.angleBetween(v: Float2) =
+    degrees(
+        acos(
+            clamp(
+                x = dot(this, v) / (length(this) * length(v)),
+                min = -1f,
+                max = 1f,
+            )
         )
+    )
+```
+
+6. Create a function to define a segment out of two vectors.
+
+```kotlin
+infix fun Float2.segmentWith(v: Float2) = Float2(x - v.x, y - v.y)
+```
+
+7. Create a function that combines the previous ones to compute the angle between three points.
+
+```kotlin
+fun angleBetweenThreePoints(first: Float2, middle: Float2, last: Float2): Float =
+    (first segmentWith middle) angleBetween (last segmentWith middle)
+```
+
+8. Use the `angleBetweenThreePoints` and landmarks position to find their angle in a `Pose`.
+
+```kotlin
+    data class Landmarks(
+        val a: LandmarkType,
+        val b: LandmarkType,
+        val c: LandmarkType,
+    ) {
+        fun angleInBodyPose(pose: Pose): Float? {
+            val first = pose.position(a)
+            val middle = pose.position(b)
+            val last = pose.position(c)
+
+            if (first == null || middle == null || last == null) return null
+
+            return angleBetweenThreePoints(
+                first,
+                middle,
+                last,
+            )
+        }
     }
 ```
 
-3. Convert the `ImageProxy` to an `MLImage`.
+9. Validate the computed angle in the `AngleConstraint`.
 
-```
-val ImageProxy.mlImage
-    @ExperimentalGetImage
-    get() = MediaMlImageBuilder(image!!)
-        .setRotation(imageInfo.rotationDegrees)
-        .build()
-```
-
-4. Process the ML task in the `analyze` method.
-
-```
-@ExperimentalGetImage
-override fun analyze(image: ImageProxy) {
-    val mlImage = image.mlImage
-    detector.process(mlImage)
-        .addOnSuccessListener { pose ->
-            callback.invoke(Result.success(Idle),) // Return while we don't validate the pose.
-        }
-        .addOnFailureListener { exception ->
-            callback.invoke(Result.failure(exception))
-        }
-        .addOnCompleteListener { image.close() }
-    }
+```kotlin
+    override fun validate(pose: Pose): Boolean = landmarks.angleInBodyPose(pose)
+        ?.let { angle ->
+            (minDegree?.let { min -> abs(angle) >= min } ?: true) &&
+                    (maxDegree?.let { max -> abs(angle) <= max } ?: true)
+        } ?: false
 ```
 
-5. Collect the flow in the camera view so we bring in the pose detection.
+## Next Step: Validate the pose
 
-```
-analysisUseCase.detectPose(LocalContext.current.executor).collectAsState(initial = Idle)
-```
-
-## Next Step: Add constraints
-
-[Step 7: Add constraints](../../tree/step_07)
+[Step 8: Validate the pose](../../tree/step_08)
