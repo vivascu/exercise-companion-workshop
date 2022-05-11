@@ -1,5 +1,6 @@
 package ch.app.builders
 
+import android.annotation.SuppressLint
 import android.util.Log
 import android.view.ViewGroup
 import androidx.camera.core.CameraSelector
@@ -83,7 +84,9 @@ private fun ImageAnalysis.detectPose(
 ): Flow<BodyPoseState> = callbackFlow {
     analyze(executor) { result ->
         with(result) {
-            onSuccess { trySend(it) }
+            onSuccess {
+                trySend(it)
+            }
             onFailure { cancel("Image Process Failure", it) }
         }
     }
@@ -91,6 +94,7 @@ private fun ImageAnalysis.detectPose(
     awaitClose {}
 }
 
+@SuppressLint("UnsafeOptInUsageError")
 private fun ImageAnalysis.analyze(
     executor: Executor,
     callback: (Result<BodyPoseState>) -> Unit,
