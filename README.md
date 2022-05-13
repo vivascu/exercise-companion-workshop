@@ -1,129 +1,78 @@
 # Exercise Companion Workshop
 
-## Step 10: Translate the coordinates
+## Step 11: Count the exercise
 
-1. In order to be able to properly translate the coordinates we need to pass the information about
-   the `SourceImage`.
+1. In order to count the exercise which in our case is time bound we can start an effect to count
+   the time.
 
 ```kotlin
-data class SourceImage(
-    val height: Int,
-    val width: Int,
-    val rotation: Int,
-    val isFlipped: Boolean,
+@Composable
+private fun Countdown(
+    onComplete: () -> Unit,
 ) {
-    val rotatedHeight
-        get() = if (rotation == 0 || rotation == 180) {
-            height
-        } else width
-
-    val rotatedWidth
-        get() = if (rotation == 0 || rotation == 180) {
-            width
-        } else height
-}
-```
-
-2. As well we need to represent the `ViewPort` that will be the destination for the skeletal
-   overlay.
-
-```kotlin
-data class ViewPort(val height: Int, val width: Int)
-
-val ViewPort.aspectRatio: Float get() = width.toFloat() / height.toFloat()
-```
-
-3. Define a `CameraMode` to be able to keep determine if the source image is flipped.
-
-```kotlin
-enum class CameraMode {
-    Front, Side
-}
-```
-
-4. Extract the `SourceImage` info out of the ML Image.
-
-```kotlin
-private fun MlImage.asSource(cameraMode: CameraMode): SourceImage = SourceImage(
-    width = width,
-    height = height,
-    rotation = rotation,
-    isFlipped = cameraMode == CameraMode.Front
-)
-```
-
-5. Pass the `SourceImage` from the image `Analazyer` to the `ValidatedState`s.
-
-```kotlin
-Result.success(
-    pose.validate(mlImage.asSource(cameraMode)),
-)
-```
-
-```kotlin
-sealed interface ValidatedPose : BodyPoseState {
-    val pose: Pose
-    val sourceImage: SourceImage
-}
-
-data class ValidBodyPose(
-    override val pose: Pose,
-    override val sourceImage: SourceImage,
-) : ValidatedPose
-
-data class InvalidBodyPose(
-    override val pose: Pose,
-    override val sourceImage: SourceImage,
-    val error: PoseError,
-) : ValidatedPose
-```
-
-6. Translate the coordinates for each `Landmark`.
-
-```kotlin
-fun Pose.translateCoordinates(sourceImage: SourceImage, viewPort: ViewPort): Map<Int, Point> =
-    allPoseLandmarks.associate { landmark ->
-        landmark.translate(sourceImage, viewPort)
+    LaunchedEffect(key1 = "countdown") {
+        delay(EXERCISE_DURATION)
+        onComplete()
     }
+}
+```
 
-fun PoseLandmark.translate(sourceImage: SourceImage, viewPort: ViewPort): Pair<Int, Point> {
+2. We can use this function when the resulting state is valid in the preview function.
 
-    val viewAspectRatio = viewPort.aspectRatio
-    val imageAspectRatio = sourceImage.rotatedWidth.toFloat() / sourceImage.rotatedHeight.toFloat()
+```kotlin
 
-    var postScaleWidthOffset = 0f
-    var postScaleHeightOffset = 0f
-    val scaleFactor: Float
+@Composable
+fun CameraPreview(
+    modifier: Modifier = Modifier,
+    scaleType: PreviewView.ScaleType = PreviewView.ScaleType.FILL_CENTER,
+    cameraSelector: CameraSelector = CameraSelector.DEFAULT_FRONT_CAMERA,
+    exerciseComplete: () -> Unit,
+) {
 
-    val viewWidth = viewPort.width.toFloat()
-    val viewHeight = viewPort.height.toFloat()
-    if (viewAspectRatio > imageAspectRatio) {
-        scaleFactor = viewWidth / sourceImage.rotatedWidth.toFloat()
-        postScaleHeightOffset =
-            (viewWidth / imageAspectRatio - viewHeight) / 2
+    ...
+    if (state.value is ValidBodyPose) {
+        Countdown {
+            exerciseComplete()
+        }
+    }
+    ...
+```
+
+3. Once the result is counted we can navigate away in to the result screen. We will keep count of
+   the completion state in the and draw the appropriate screen.
+
+```kotlin
+@Composable
+fun Exercise() {
+
+...
+    val isComplete = remember { mutableStateOf(false) }
+
+    if (isComplete.value) {
+        Column(
+            modifier = Modifier.fillMaxSize(),
+            verticalArrangement = Arrangement.Center,
+            horizontalAlignment = Alignment.CenterHorizontally
+        ) {
+            Text(text = "You are done for today!")
+
+            Button(onClick = { isComplete.value = false }) {
+                Text(text = "Repeat")
+            }
+        }
     } else {
-        scaleFactor = viewHeight / sourceImage.rotatedHeight.toFloat()
-        postScaleWidthOffset = (viewHeight * imageAspectRatio - viewWidth) / 2
+        PermissionCheck {
+            Box {
+                CameraPreview {
+                    isComplete.value = true
+                }
+            }
+        }
     }
-
-    val x = if (sourceImage.isFlipped) {
-        viewWidth - (position3D.x * scaleFactor - postScaleWidthOffset)
-    } else position3D.x * scaleFactor - postScaleWidthOffset
-
-    val y = position3D.y * scaleFactor - postScaleHeightOffset
-
-    return landmarkType to Point(x = x, y = y, z = position3D.z)
 }
 ```
 
-7. Use the translated landmarks to draw the `Skeleton`.
+## Next steps
 
-```kotlin
-fun setBodyState(state: BodyPoseState) {
-    val landmarks = bodyPose.translateCoordinates(state.sourceImage, ViewPort(height, width))
-}
-```
-
-## Next Step: Count the exercise
-
-[Step 11: Count the exercise](../../tree/step_11)
+Train a model to count repetitions: 
+- [ML KIT example of repetition counting](https://developers.google.com/ml-kit/vision/pose-detection/classifying-poses#3_train_the_model_and_count_repetitions)
