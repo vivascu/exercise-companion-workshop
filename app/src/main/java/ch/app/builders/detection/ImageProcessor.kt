@@ -5,6 +5,7 @@ import androidx.camera.core.ImageAnalysis
 import androidx.camera.core.ImageProxy
 import ch.app.builders.model.BodyPoseState
 import ch.app.builders.model.Idle
+import ch.app.builders.validation.validate
 import com.google.mlkit.vision.pose.PoseDetection
 import com.google.mlkit.vision.pose.defaults.PoseDetectorOptions
 
@@ -26,7 +27,7 @@ class ImageProcessor(
         detector.process(mlImage)
             .addOnSuccessListener { pose ->
                 callback.invoke(
-                    Result.success(Idle), // Return while we don't validate the pose.
+                    Result.success(pose.validate()),
                 )
             }
             .addOnFailureListener { exception ->

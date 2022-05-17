@@ -1,133 +1,105 @@
 # Exercise Companion Workshop
 
-## Step 7: Add constraints
+## Step 8: Validate the pose
 
-We can identify a valid pose by computing the angles of various joints.
-
-Our simple pose can be described as the following combination of approximate body part angles:
-
-- 90 degree angle at both knees
-- 90 degree angle at the front of the legs and waist
-
-We use the pose landmarks to compute these angles.
-
-1. Add the `Constraint` interface that can validate a `Pose`.
+1. When discussing about validation we can start by thinking about the errors we would emmit. We
+   define a error for each leg and each angle we are interested.
 
 ```kotlin
-interface Constraint {
-    fun validate(pose: Pose): Boolean
+enum class PoseError {
+    LEFT_KNEE_NOT_90_DEGREES,
+    RIGHT_KNEE_NOT_90_DEGREES,
+    LEFT_HIP_NOT_90_DEGREES,
+    RIGHT_HIP_NOT_90_DEGREES,
 }
 ```
 
-2. Create a `Constraint` that will validate an angle. For that we will have to specify three point
-   in the `Pose` with the use of the `LandmarkType`.
-
-Since the `LandmarkType` is an `Int` in the ML Kit we can define a typealias for readability.
+2. We would need a `ValidatedBodyPose` to express the result in a `BodyPoseState`.
 
 ```kotlin
-typealias LandmarkType = Int
+sealed interface ValidatedPose : BodyPoseState {
+    val pose: Pose
+}
+
+data class ValidBodyPose(
+    override val pose: Pose,
+) : ValidatedPose
+
+data class InvalidBodyPose(
+    override val pose: Pose,
+    val error: PoseError,
+) : ValidatedPose
 ```
+
+3. Define a constraint for each `PoseError`.
 
 ```kotlin
-data class Landmarks(
-    val a: LandmarkType,
-    val b: LandmarkType,
-    val c: LandmarkType,
-) 
+val constraints = mapOf(
+    PoseError.LEFT_KNEE_NOT_90_DEGREES to AngleConstraint(
+        landmarks = AngleConstraint.Landmarks(
+            a = PoseLandmark.LEFT_HIP,
+            b = PoseLandmark.LEFT_KNEE,
+            c = PoseLandmark.LEFT_ANKLE,
+        ),
+        minDegree = 75f,
+        maxDegree = 115f,
+    ),
+
+    PoseError.RIGHT_KNEE_NOT_90_DEGREES to AngleConstraint(
+        landmarks = AngleConstraint.Landmarks(
+            a = PoseLandmark.RIGHT_HIP,
+            b = PoseLandmark.RIGHT_KNEE,
+            c = PoseLandmark.RIGHT_ANKLE,
+        ),
+        minDegree = 75f,
+        maxDegree = 115f,
+    ),
+
+    PoseError.LEFT_HIP_NOT_90_DEGREES to AngleConstraint(
+        landmarks = AngleConstraint.Landmarks(
+            a = PoseLandmark.LEFT_SHOULDER,
+            b = PoseLandmark.LEFT_HIP,
+            c = PoseLandmark.LEFT_KNEE,
+        ),
+        minDegree = 75f,
+        maxDegree = 115f,
+    ),
+
+    PoseError.RIGHT_HIP_NOT_90_DEGREES to AngleConstraint(
+        landmarks = AngleConstraint.Landmarks(
+            a = PoseLandmark.RIGHT_SHOULDER,
+            b = PoseLandmark.RIGHT_HIP,
+            c = PoseLandmark.RIGHT_KNEE,
+        ),
+        minDegree = 75f,
+        maxDegree = 115f,
+    ),
+)
 ```
 
-And the `AngleConstraint` should specify the threshold for the valid angle.
+4. Validate the pose against each error we defined.
 
 ```kotlin
-internal class AngleConstraint(
-    private val landmarks: Landmarks,
-    private val minDegree: Float? = null,
-    private val maxDegree: Float? = null,
-) : Constraint {
-
-    override fun validate(pose: Pose): Boolean {
-        ...
-    }   
+fun Pose.validate(): ValidatedPose = PoseError.values()
+    .map { error ->
+        val isValid = constraints[error]?.validate(this) ?: false
+        error.takeIf { !isValid }
+    }.firstOrNull { it != null }
+    ?.let { error ->
+        InvalidBodyPose(this, error)
+    } ?: ValidBodyPose(this)
 ```
 
-3. In order to compute the angles we will use some math and for that we need the `kotlin-math`
-   dependency.
-
-```
-implementation 'dev.romainguy:kotlin-math:1.3.0'
-```
-
-4. Determine the vector out of the position of a specified `LandmarkType` for a given `Pose`.
-
+5. Validate the `Pose` in the `Analyzer`.
 ```kotlin
-fun Pose.position(type: LandmarkType): Float2? =
-    allPoseLandmarks.firstOrNull { it.landmarkType == type }?.position?.asVector
-
-val PointF.asVector get() = Float2(x, y)
+detector.process(mlImage)
+   .addOnSuccessListener { pose ->
+      callback.invoke(
+         Result.success(pose.validate()),
+      )
+   }
 ```
 
-5. Create a function to determine the angle between two vectors.
+## Next Step: Show the Body Pose
 
-```kotlin
-infix fun Float2.angleBetween(v: Float2) =
-    degrees(
-        acos(
-            clamp(
-                x = dot(this, v) / (length(this) * length(v)),
-                min = -1f,
-                max = 1f,
-            )
-        )
-    )
-```
-
-6. Create a function to define a segment out of two vectors.
-
-```kotlin
-infix fun Float2.segmentWith(v: Float2) = Float2(x - v.x, y - v.y)
-```
-
-7. Create a function that combines the previous ones to compute the angle between three points.
-
-```kotlin
-fun angleBetweenThreePoints(first: Float2, middle: Float2, last: Float2): Float =
-    (first segmentWith middle) angleBetween (last segmentWith middle)
-```
-
-8. Use the `angleBetweenThreePoints` and landmarks position to find their angle in a `Pose`.
-
-```kotlin
-    data class Landmarks(
-        val a: LandmarkType,
-        val b: LandmarkType,
-        val c: LandmarkType,
-    ) {
-        fun angleInBodyPose(pose: Pose): Float? {
-            val first = pose.position(a)
-            val middle = pose.position(b)
-            val last = pose.position(c)
-
-            if (first == null || middle == null || last == null) return null
-
-            return angleBetweenThreePoints(
-                first,
-                middle,
-                last,
-            )
-        }
-    }
-```
-
-9. Validate the computed angle in the `AngleConstraint`.
-
-```kotlin
-    override fun validate(pose: Pose): Boolean = landmarks.angleInBodyPose(pose)
-        ?.let { angle ->
-            (minDegree?.let { min -> abs(angle) >= min } ?: true) &&
-                    (maxDegree?.let { max -> abs(angle) <= max } ?: true)
-        } ?: false
-```
-
-## Next Step: Validate the pose
-
-[Step 8: Validate the pose](../../tree/step_08)
+[Step 9: Show the Body Pose](../../tree/step_09)
