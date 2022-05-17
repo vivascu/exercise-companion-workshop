@@ -7,9 +7,7 @@ import androidx.camera.core.CameraSelector
 import androidx.camera.core.ImageAnalysis
 import androidx.camera.core.Preview
 import androidx.camera.view.PreviewView
-import androidx.compose.runtime.Composable
-import androidx.compose.runtime.collectAsState
-import androidx.compose.runtime.rememberCoroutineScope
+import androidx.compose.runtime.*
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalLifecycleOwner
@@ -17,9 +15,11 @@ import androidx.compose.ui.viewinterop.AndroidView
 import ch.app.builders.detection.ImageProcessor
 import ch.app.builders.model.BodyPoseState
 import ch.app.builders.model.Idle
+import ch.app.builders.model.ValidBodyPose
 import ch.app.builders.ui.GraphicOverlay
 import kotlinx.coroutines.cancel
 import kotlinx.coroutines.channels.awaitClose
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.callbackFlow
 import kotlinx.coroutines.launch
@@ -29,14 +29,14 @@ import java.util.concurrent.Executor
 fun CameraPreview(
     modifier: Modifier = Modifier,
     scaleType: PreviewView.ScaleType = PreviewView.ScaleType.FILL_CENTER,
-    cameraSelector: CameraSelector = CameraSelector.DEFAULT_FRONT_CAMERA
+    cameraSelector: CameraSelector = CameraSelector.DEFAULT_FRONT_CAMERA,
+    exerciseComplete: () -> Unit,
 ) {
     val coroutineScope = rememberCoroutineScope()
     val lifecycleOwner = LocalLifecycleOwner.current
 
     // CameraX Analysis UseCase
-    val analysisUseCase = ImageAnalysis.Builder()
-        .build()
+    val analysisUseCase = remember { ImageAnalysis.Builder().build() }
 
     AndroidView(
         modifier = modifier,
@@ -93,7 +93,24 @@ fun CameraPreview(
             it.setBodyState(state.value)
         }
     )
+
+    if (state.value is ValidBodyPose) {
+        Countdown {
+            exerciseComplete()
+        }
+    }
 }
+
+@Composable
+private fun Countdown(
+    onComplete: () -> Unit,
+) {
+    LaunchedEffect(key1 = "countdown") {
+        delay(2000)
+        onComplete()
+    }
+}
+
 
 private fun ImageAnalysis.detectPose(
     executor: Executor,
